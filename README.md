@@ -74,6 +74,49 @@ A powerful Stremio addon that brings TV2Play.hu content directly to your Stremio
 Available in Stremio addon settings:
 - **Program Order**: Choose between 'Popularity' (default) or 'Name' (alphabetical)
 
+## 🚀 Systemd Service (Optional)
+
+You can run the addon as a systemd service. However, for initial testing and development, use the basic `node server.js` command first to ensure everything works.
+
+**Note:** Always test with `node server.js` before setting up systemd to verify the addon functions correctly.
+
+1. **Create the service file** `/etc/systemd/system/tv2play-stremio.service`:
+
+```ini
+[Unit]
+Description=TV2 Play Stremio Addon
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/tv2play-stremio-addon
+ExecStart=/usr/bin/node /path/to/tv2play-stremio-addon/server.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+2. **Update the paths** in the service file:
+   - Replace `your-user` with your system user
+   - Replace `/path/to/tv2play-stremio-addon` with the actual path to your project
+
+3. **Enable and start the service**:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable tv2play-stremio
+sudo systemctl start tv2play-stremio
+sudo systemctl status tv2play-stremio
+```
+
+4. **View logs**:
+```bash
+sudo journalctl -u tv2play-stremio -f
+```
+
 ## 🔧 API Endpoints
 
 - `GET /` - Landing page with installation instructions
