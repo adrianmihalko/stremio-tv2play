@@ -209,16 +209,72 @@ async function catalogHandler(args, cb) {
           name: item.title,
           poster: item.imageUrl && item.imageUrl.startsWith('http') ? item.imageUrl : `${baseUrl}${item.imageUrl || ''}`,
           background: item.imageUrl && item.imageUrl.startsWith('http') ? item.imageUrl : `${baseUrl}${item.imageUrl || ''}`,
-          description: item.lead,
-          genres: item.genre ? [item.genre] : [],
-          releaseInfo: item.availableFrom ? new Date(item.availableFrom).getFullYear().toString() : undefined
+          description: item.lead || item?.seo?.description || '',
+          genres: (() => {
+            if (Array.isArray(item.genre) && item.genre.length)
+              return item.genre;
+            if (item.category)
+              return [item.category];
+            if (item.genres && typeof item.genres === 'string')
+              return item.genres.split(',').map(g => g.trim());
+            return [];
+          })(),
+          releaseInfo: (() => {
+            if (!item.availableFrom) return undefined;
+
+            let timestamp = item.availableFrom;
+            if (typeof timestamp === 'string') timestamp = Number(timestamp);
+
+            // Convert seconds → milliseconds if needed
+            if (timestamp < 1000000000000) {
+              timestamp *= 1000;
+            }
+
+            const date = new Date(timestamp);
+            const year = date.getFullYear();
+            return isNaN(year) ? undefined : year.toString();
+          })(),
         });
       }
     }
     
+    // Save metas to cache
     cachedMetas = metas;
+
+    // Try to filter out empty and failed shows if we have a list
+    try {
+      const emptyPath = path.join(__dirname, 'empty_shows.json');
+      if (fs.existsSync(emptyPath)) {
+        const json = JSON.parse(fs.readFileSync(emptyPath, 'utf8'));
+
+        // Collect all IDs (supports old and new formats)
+        const emptyIds = new Set();
+        if (Array.isArray(json)) {
+          // Old format: just an array of empty shows
+          json.forEach(e => e.id && emptyIds.add(e.id));
+        } else {
+          // New format: object with emptyShows + failedShows
+          (json.emptyShows || []).forEach(e => e.id && emptyIds.add(e.id));
+          (json.failedShows || []).forEach(e => e.id && emptyIds.add(e.id));
+        }
+
+        const before = cachedMetas.length;
+        cachedMetas = cachedMetas.filter(m => !emptyIds.has(m.id));
+        const removed = before - cachedMetas.length;
+        debugLog(
+          serverConfig.debug,
+          `Filtered out ${removed} empty/failed shows from catalog (out of ${before}).`
+        );
+      }
+    } catch (err) {
+      console.warn('[DEBUG] Failed to filter empty/failed shows:', err.message);
+    }
+
     lastUpdated = new Date();
-    debugLog(serverConfig.debug, `Cache updated. Found ${cachedMetas.length} shows. Premium skipped: ${premiumSkipped}`);
+    debugLog(
+      serverConfig.debug,
+      `Cache updated. Final count: ${cachedMetas.length} shows (Premium skipped: ${premiumSkipped})`
+    );
     cb(null, { metas: cachedMetas });
   } catch (error) {
     console.error('[DEBUG] Cache update error:', error);
@@ -311,7 +367,7 @@ async function metaHandler(args, cb) {
               videos.push({
                 id: `tv2play:${card.slug}`,
                 title: card.title,
-                released: card.contentLength ? new Date(Date.now() - card.contentLength * 1000).toISOString() : undefined,
+                released: card.availableFrom || undefined,
                 thumbnail: card.imageUrl.startsWith('http') ? card.imageUrl : `${baseUrl}${card.imageUrl}`,
                 season: card.seriesInfo?.seasonNr || season || 1,
                 episode: card.seriesInfo?.episodeNr || episodeNumber
@@ -613,6 +669,97 @@ if (addonInterface.middleware) {
     }
   });
 }
+
+// ---------------------
+// Manual empty show scan mode
+// ---------------------
+async function scanForEmptyShows(exitAfter = true) {
+  console.log('[SCAN] Starting scan for empty shows...');
+
+  if (cachedMetas.length === 0) {
+    console.log('[SCAN] Cache empty — fetching catalog first...');
+    await new Promise((resolve) => {
+      catalogHandler({ type: 'tv2play', id: 'tv2play-catalog' }, (err, result) => {
+        if (err) {
+          console.error('[SCAN] Failed to fetch catalog:', err);
+        } else {
+          cachedMetas = result.metas || [];
+        }
+        resolve();
+      });
+    });
+  }
+
+  const emptyShows = [];
+  const failedShows = [];
+  let processed = 0;
+
+  const timeoutPromise = (ms) =>
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+
+  const callMetaWithTimeout = async (meta, retries = 4) => {
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        const result = await Promise.race([
+          new Promise((resolve, reject) => {
+            metaHandler({ type: meta.type, id: meta.id }, (err, res) => {
+              if (err) reject(err);
+              else resolve(res);
+            });
+          }),
+          timeoutPromise(30000),
+        ]);
+        return result;
+      } catch (err) {
+        console.warn(`[SCAN] [${meta.name}] attempt ${attempt} failed: ${err.message}`);
+        if (attempt > retries) throw err;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  };
+
+  for (const meta of cachedMetas) {
+    processed++;
+    process.stdout.write(`\r[SCAN] Checking ${processed}/${cachedMetas.length}: ${meta.name}`);
+
+    try {
+      const result = await callMetaWithTimeout(meta);
+      const videos = result?.meta?.videos || [];
+      if (videos.length === 0 || videos.every(v => v.isDummy || !v.title)) {
+        emptyShows.push({ name: meta.name, id: meta.id });
+      }
+    } catch (err) {
+      failedShows.push({ name: meta.name, id: meta.id, reason: err.message });
+    }
+  }
+
+  console.log(`\n[SCAN] Done. Found ${emptyShows.length} empty shows.`);
+  console.log(`[SCAN] ${failedShows.length} shows failed or timed out.`);
+
+  const outputPath = path.join(__dirname, 'empty_shows.json');
+  fs.writeFileSync(outputPath, JSON.stringify({ emptyShows, failedShows }, null, 2));
+  console.log(`[SCAN] Results saved to ${outputPath}`);
+  if (exitAfter) process.exit(0);
+}
+
+// -----------------------------------------------------
+// Detect and run scan mode before starting web server
+// -----------------------------------------------------
+(async () => {
+  const outputPath = path.join(__dirname, 'empty_shows.json');
+  if (!fs.existsSync(outputPath)) {
+    console.log('[AUTO SCAN] empty_shows.json not found, running automatic scan...');
+    await scanForEmptyShows(false);
+  }
+})();
+
+if (process.argv.includes('--search-empty-shows')) {
+  (async () => {
+    await scanForEmptyShows();
+  })();
+  return; // Prevent server from starting
+}
+
 
 // Start the server
 const port = process.env.PORT || 7000;
