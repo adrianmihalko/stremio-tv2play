@@ -209,7 +209,7 @@ async function catalogHandler(args, cb) {
           name: item.title,
           poster: item.imageUrl && item.imageUrl.startsWith('http') ? item.imageUrl : `${baseUrl}${item.imageUrl || ''}`,
           background: item.imageUrl && item.imageUrl.startsWith('http') ? item.imageUrl : `${baseUrl}${item.imageUrl || ''}`,
-          description: item.lead || item?.seo?.description || '',
+          description: item?.seo?.description || item.lead || '',
           genres: (() => {
             if (Array.isArray(item.genre) && item.genre.length)
               return item.genre;
@@ -404,7 +404,7 @@ async function metaHandler(args, cb) {
       name: seriesName,
       poster: posterUrl?.startsWith('http') ? posterUrl : `${baseUrl}${posterUrl}`,
       background: posterUrl?.startsWith('http') ? posterUrl : `${baseUrl}${posterUrl}`,
-      description: showData?.description || firstPage?.lead,
+      description: showData?.description || firstPage?.lead || data.seo?.description || '',
       genres: firstPage?.genre || [],
       releaseInfo: undefined, // Not available in this response
       videos
@@ -570,6 +570,14 @@ app.use((req, res, next) => {
 app.get('/debug', (req, res) => {
   const debugInfo = cachedMetas.map(m => ({ name: m.name, url: m.id.replace('tv2play:', '') }));
   res.json(debugInfo);
+});
+
+// Clear cache endpoint
+app.get('/clear-cache', (req, res) => {
+  cachedMetas = [];
+  lastUpdated = null;
+  console.log('[DEBUG] Cache cleared');
+  res.json({ message: 'Cache cleared' });
 });
 
 app.get('/', (req, res) => {
