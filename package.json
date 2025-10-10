@@ -1,0 +1,19 @@
+{
+  "name": "stremio-tv2play-addon",
+  "version": "1.0.0",
+  "description": "Stremio addon for TV2 Play",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "latest",
+    "express": "^4.18.0",
+    "axios": "^1.6.0",
+    "m3u8-parser": "^4.8.0",
+    "socks-proxy-agent": "latest"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
