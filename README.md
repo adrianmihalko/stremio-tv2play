@@ -22,8 +22,8 @@ A powerful Stremio addon that brings TV2Play.hu content directly to your Stremio
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd tv2play-stremio-addon
+   git clone https://github.com/adrianmihalko/stremio-tv2play.git
+   cd stremio-tv2play
    ```
 
 2. **Install dependencies**
