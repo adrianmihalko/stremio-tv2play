@@ -1,6 +1,8 @@
-# TV2 Play Stremio Addon
+# TV2Play.hu Stremio Addon
 
 A powerful Stremio addon that brings TV2Play.hu content directly to your Stremio interface. Watch Hungarian TV shows, series seamlessly integrated with your favorite media center.
+
+<img width="2858" height="1888" alt="CleanShot 2025-10-10 at 15 03 45@2x" src="https://github.com/user-attachments/assets/aaad3793-d8bb-4c7d-8308-2132d40eedea" />
 
 ## 🌟 Features
 
