@@ -5,6 +5,8 @@ const m3u8Parser = require('m3u8-parser');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const fs = require('fs');
 const path = require('path');
+const querystring = require('querystring');
+const Fuse = require('fuse.js');
 
 // Load server configuration
 const configPath = path.join(__dirname, 'config.json');
@@ -116,13 +118,38 @@ function debugLog(isDebug, ...args) {
   }
 }
 
-
+// Helper function to normalize strings for searching
+function normalizeString(str) {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
 
 
 // Catalog handler
 async function catalogHandler(args, cb) {
   const { type, id, config } = args;
   debugLog(serverConfig.debug, `Catalog request: ${type}, ${id}`);
+
+  if (args.extra && args.extra.search) {
+    const query = args.extra.search;
+    debugLog(serverConfig.debug, `Searching for: "${query}"`);
+
+    debugLog(serverConfig.debug, 'Cached metas:', cachedMetas);
+    const normalizedQuery = normalizeString(query);
+    debugLog(serverConfig.debug, `Normalized query: "${normalizedQuery}"`);
+    const fuse = new Fuse(cachedMetas, {
+      keys: ['name'],
+      includeScore: true,
+      threshold: 0.2,
+      getFn: (obj, path) => normalizeString(obj[path])
+    });
+    const searchResults = fuse.search(normalizedQuery);
+    debugLog(serverConfig.debug, `Fuse.js search results:`, searchResults);
+    const searchMetas = searchResults.map(result => result.item);
+    debugLog(serverConfig.debug, `Final matched shows:`, searchMetas);
+
+
+    return cb(null, { metas: searchMetas });
+  }
 
   const refreshInterval = serverConfig.refreshInterval;
   const programOrder = (config && config.programOrder) ? config.programOrder : 'Popularity';
@@ -188,10 +215,11 @@ async function catalogHandler(args, cb) {
     let premiumSkipped = 0;
 
     for (const item of allItems) {
-      if (item.isPremium === 'true') {
-        premiumSkipped++;
-        continue;
-      }
+      // if (item.isPremium === 'true') {
+      //   debugLog(serverConfig.debug, `Skipping premium show: ${item.title}`);
+      //   premiumSkipped++;
+      //   continue;
+      // }
 
       let stremioType;
       if (item.contentType === 'SHOW') {
@@ -240,6 +268,16 @@ async function catalogHandler(args, cb) {
     
     // Save metas to cache
     cachedMetas = metas;
+
+    // Write cached shows to a file for debugging
+    try {
+      const cachedShowsPath = path.join(__dirname, 'cached_shows.json');
+      fs.writeFileSync(cachedShowsPath, JSON.stringify(cachedMetas, null, 2));
+      debugLog(serverConfig.debug, `Cached shows written to ${cachedShowsPath}`);
+    } catch (err) {
+      console.warn('[DEBUG] Failed to write cached shows to file:', err.message);
+    }
+
 
     // Try to filter out empty and failed shows if we have a list
     try {
@@ -528,7 +566,8 @@ const builder = new addonBuilder({
     {
       type: 'tv2play',
       id: 'tv2play-catalog',
-      name: 'TV2 shows'
+      name: 'TV2 shows',
+      extra: [{ name: 'search', isRequired: false }]
     }
   ],
   config: [
@@ -626,12 +665,13 @@ if (addonInterface.middleware) {
     res.json(addonInterface.manifest);
   });
 
-  app.get('/catalog/:type/:id.json', async (req, res) => {
+  app.get('/catalog/:type/:id/:extra?.json', async (req, res) => {
     const { type, id } = req.params;
+	const extra = req.params.extra ? querystring.parse(req.params.extra) : {};
     debugLog(serverConfig.debug, `Catalog request: ${type}, ${id}`);
     try {
       const result = await new Promise((resolve, reject) => {
-        catalogHandler({ type, id }, (err, result) => {
+        catalogHandler({ type, id, extra }, (err, result) => {
           if (err) reject(err);
           else resolve(result);
         });
@@ -771,9 +811,23 @@ if (process.argv.includes('--search-empty-shows')) {
 
 // Start the server
 const port = process.env.PORT || 7000;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`[DEBUG] TV2 Play Stremio addon server running on port ${port}`);
   console.log(`[DEBUG] Manifest URL: http://0.0.0.0:${port}/manifest.json`);
+
+  // Update the cache on server start
+  console.log('[DEBUG] Updating cache on server start...');
+  await new Promise((resolve, reject) => {
+    catalogHandler({ type: 'tv2play', id: 'tv2play-catalog' }, (err, result) => {
+      if (err) {
+        console.error('[DEBUG] Cache update failed on server start:', err);
+        reject(err);
+      } else {
+        console.log('[DEBUG] Cache updated on server start.');
+        resolve(result);
+      }
+    });
+  });
 });
 
 // Export for testing
