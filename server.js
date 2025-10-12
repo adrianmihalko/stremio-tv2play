@@ -537,7 +537,7 @@ async function streamHandler(args, cb) {
           url: streamUrl,
           title: playlist.attributes?.RESOLUTION ? `${playlist.attributes.RESOLUTION.width}x${playlist.attributes.RESOLUTION.height}` : 'Unknown',
           behaviorHints: {
-            bingeGroup: 'tv2play',
+            bingeGroup: id,
             proxyHeaders: {
               'Referer': baseUrl
             }
