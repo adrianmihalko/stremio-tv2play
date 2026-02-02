@@ -1,170 +1,74 @@
-# TV2Play.hu Stremio Addon
+# TV2 Play Stremio Addon (Docker Release)
 
-A powerful Stremio addon that brings TV2Play.hu content directly to your Stremio interface. Watch Hungarian TV shows, series seamlessly integrated with your favorite media center.
+This folder contains a lightweight Docker setup that brings TV2Play.hu content directly to your Stremio interface. Watch Hungarian TV shows, series seamlessly integrated with your favorite media center.
 
 <img width="2858" height="1888" alt="CleanShot 2025-10-10 at 15 03 45@2x" src="https://github.com/user-attachments/assets/aaad3793-d8bb-4c7d-8308-2132d40eedea" />
 
-## 🌟 Features
 
-- **Complete Catalog**: Access the full TV2 Play library including series, shows
-- **Smart Caching**: Efficient caching system to reduce load times and API calls
-- **Geo-Unblocking**: Built-in IP spoofing to access Hungarian content from anywhere
-- **Configurable Settings**: Server-side configuration for debug logging and refresh intervals
-- **Stremio Integration**: Native Stremio addon with user-configurable program ordering
+## ✅ What’s Included
 
-## 🚀 Quick Start
+- Docker-friendly setup for running the addon
+- Docker Compose example
 
-### Prerequisites
+## ⚙️ Requirements
 
-- Node.js (v14 or higher)
-- npm or yarn
-- Stremio application
+- Docker
+- (Optional) Docker Compose
+- HTTPS domain or reverse proxy for Stremio installation
 
-### Installation
+## 🔧 Configuration
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/adrianmihalko/stremio-tv2play.git
-   cd stremio-tv2play
-   ```
+### Environment variables
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+| Variable | Description |
+|---------|-------------|
+| `ADDON_URL` | URL of your addon (used for proxying streams) VERY IMPORTANT (it can be either http://ip:port or https://reverseproxified.domain) |
+| `PORT` | Optional server port (default `7000`) |
+| `DATA_DIR` | Writable data directory for cache files (default `/data` in Docker image) |
+| `SKIP_SCAN` | Set to `1` to skip the automatic empty-show scan on startup |
+| `DEBUG` | Set to `true` or `1` for verbose logs |
+| `REFRESH_INTERVAL` | Cache refresh interval in minutes (default `60`) |
 
-3. **Configure settings** (optional)
-   Edit `config.json` to customize:
-   ```json
-   {
-     "debug": false,
-     "refreshInterval": 60
-   }
-   ```
+### Configuration (no config.json)
 
-4. **Start the server**
-   ```bash
-   npm start
-   # or
-   node server.js
-   ```
+Use environment variables in Docker to configure debug and refresh interval.
 
-5. **Install in Stremio**
-   Stremio requires HTTPS for addon installation, so you need to set up a reverse proxy from your local server to an HTTPS domain.
+## 🧩 Docker Compose Example
 
-   **Example reverse proxy setup:**
-   ```
-   http://192.168.1.100:7000 -> https://stremio-tv2play.yourdomain.com
-   ```
+Create a `docker-compose.yml` like this:
 
-   - Set up your reverse proxy (nginx, Caddy, Apache, etc.) to proxy HTTPS requests to your local server
-   - Open Stremio and go to the Addons section
-   - Click the install button on the landing page at `https://stremio-tv2play.yourdomain.com`
-   - Content will be available in the Discovery tab, where you can select "TV2Play shows" from the first dropdown
+```yaml
+services:
+  stremio-tv2play:
+    image: stremio-tv2play:lite
+    container_name: stremio-tv2play
+    restart: unless-stopped
+    ports:
+      - "7000:7000"
+    environment:
+      # IP and port this addon running at
+      ADDON_URL: http://192.168.1.5:7000
+      # If you use a reverse proxy (pointing to http://192.168.1.5:7000 in this example):
+      # ADDON_URL: https://stremio-tv2play.mydomain.com
+      DATA_DIR: /data
+      SKIP_SCAN: "0"
+      DEBUG: "false"
+      REFRESH_INTERVAL: "60"
+    volumes:
+      - stremio-tv2play-data:/data
 
-## ⚙️ Configuration
-
-### Server Configuration (`config.json`)
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `debug` | boolean | `false` | Enable detailed debug logging |
-| `refreshInterval` | number | `60` | Cache refresh interval in minutes |
-
-### Stremio Configuration
-
-Available in Stremio addon settings:
-- **Program Order**: Choose between 'Popularity' (default) or 'Name' (alphabetical)
-
-## 🚀 Systemd Service (Optional)
-
-You can run the addon as a systemd service. However, for initial testing and development, use the basic `node server.js` command first to ensure everything works.
-
-**Note:** Always test with `node server.js` before setting up systemd to verify the addon functions correctly.
-
-1. **Create the service file** `/etc/systemd/system/tv2play-stremio.service`:
-
-```ini
-[Unit]
-Description=TV2 Play Stremio Addon
-After=network.target
-
-[Service]
-Type=simple
-User=your-user
-WorkingDirectory=/path/to/tv2play-stremio-addon
-ExecStart=/usr/bin/node /path/to/tv2play-stremio-addon/server.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
+volumes:
+  stremio-tv2play-data:
 ```
 
-2. **Update the paths** in the service file:
-   - Replace `your-user` with your system user
-   - Replace `/path/to/tv2play-stremio-addon` with the actual path to your project
+Then run:
 
-3. **Enable and start the service**:
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable tv2play-stremio
-sudo systemctl start tv2play-stremio
-sudo systemctl status tv2play-stremio
+docker compose up -d
 ```
 
-4. **View logs**:
-```bash
-sudo journalctl -u tv2play-stremio -f
+Open Stremio and install the addon from:
+
 ```
-
-## 🔧 API Endpoints
-
-- `GET /` - Landing page with installation instructions
-- `GET /manifest.json` - Stremio addon manifest
-- `GET /debug` - Debug endpoint showing cached content
-
-## 🌐 How It Works
-
-1. **Content Discovery**: Scrapes TV2 Play's API to build a comprehensive catalog
-2. **Metadata Extraction**: Fetches detailed information about shows, seasons, and episodes
-3. **Stream Resolution**: Locates and provides streaming URLs with multiple quality options
-4. **Geo-Unblocking**: Uses Hungarian IP ranges to bypass regional restrictions
-5. **Caching**: Implements intelligent caching to minimize API calls and improve performance
-
-## 🔒 Security & Privacy
-
-- No user data collection
-- No tracking or analytics
-- Respects TV2 Play's terms of service
-- Uses legitimate API endpoints
-
-**Streaming issues**
-- Premium content requires TV2 Play subscription, not implemented yet
-
-### Debug Mode
-
-Enable debug logging by setting `"debug": true` in `config.json`:
-
-```json
-{
-  "debug": true,
-  "refreshInterval": 60
-}
+https://your-domain.example/manifest.json
 ```
-
-Check server console output for detailed logs.
-
-
-## 📄 License
-
-This project is for educational purposes only. Please respect TV2 Play's terms of service and copyright laws.
-
-## 🙏 Acknowledgments
-
-- **vargalex** for the original Kodi TV2 Play addon that inspired this project
-
----
-
-**Enjoy watching Hungarian content with TV2 Play Stremio Addon! 🇭🇺**
