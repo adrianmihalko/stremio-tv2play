@@ -70,5 +70,5 @@ docker compose up -d
 Open Stremio and install the addon from:
 
 ```
-https://your-domain.example/manifest.json
+http://192.168.1.5:7000/manifest.json
 ```
