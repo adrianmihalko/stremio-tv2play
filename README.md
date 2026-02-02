@@ -40,7 +40,7 @@ Create a `docker-compose.yml` like this:
 ```yaml
 services:
   stremio-tv2play:
-    image: stremio-tv2play:lite
+    image: stremio-tv2play:latest
     container_name: stremio-tv2play
     restart: unless-stopped
     ports:
